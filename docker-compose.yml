@@ -1,28 +1,24 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: poker_postgres
     environment:
       POSTGRES_USER: poker_user
-      POSTGRES_PASSWORD: secure_password_change_me
-      POSTGRES_DB: poker_game_db
+      POSTGRES_PASSWORD: poker_password
+      POSTGRES_DB: poker_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U poker_user"]
+      test: ["CMD-SHELL", "pg_isready -U poker_user -d poker_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Redis (for cache/sessions)
   redis:
     image: redis:7-alpine
-    container_name: poker_redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -31,27 +27,19 @@ services:
       timeout: 5s
       retries: 5
 
-  # Backend Node.js
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: poker_backend
-    environment:
-      NODE_ENV: development
-      PORT: 3001
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: poker_user
-      DB_PASSWORD: secure_password_change_me
-      DB_NAME: poker_game_db
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      JWT_SECRET: dev_secret_key_change_in_prod
-      JWT_REFRESH_SECRET: dev_refresh_secret_change_in_prod
-      CORS_ORIGIN: http://localhost:3000
     ports:
       - "3001:3001"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://poker_user:poker_password@postgres:5432/poker_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev_secret_key_change_in_production
+      JWT_REFRESH_SECRET: dev_refresh_secret_key
+      PORT: 3001
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,25 +47,26 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/src:/app/src
-      - /app/node_modules
     command: npm run dev
 
-  # Frontend React (optional, can run separately)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: poker_frontend
     ports:
       - "3000:3000"
     environment:
-      REACT_APP_API_URL: http://localhost:3001
-      REACT_APP_SOCKET_URL: http://localhost:3001
+      VITE_API_URL: http://localhost:3001
+      VITE_WS_URL: http://localhost:3001
     depends_on:
       - backend
     volumes:
       - ./frontend/src:/app/src
-      - /app/node_modules
+    command: npm run dev
 
 volumes:
   postgres_data:
+  
+networks:
+  default:
+    name: poker-network
